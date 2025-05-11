@@ -1,0 +1,31 @@
+# IDE files
+.idea/
+*.iml
+
+# Python generated files
+__pycache__/
+*.pyc
+*.pylint.tmp # 忽略pylint临时文件
+
+# Raw data (large files)
+*.rar
+*.xlsx # 如果原始xlsx也很大
+
+# Generated output files
+**/plots/ # 忽略所有目录下的plots文件夹
+**/figs/  # 忽略所有目录下的figs文件夹
+*.png     # 如果所有png都是生成的图
+*.svg     # 如果所有svg都是生成的图
+*.csv     # 谨慎忽略csv, 只忽略确认为生成的大文件或中间文件
+*.mat     # 谨慎忽略mat, 只忽略确认为生成的大文件或中间文件
+mse_summary.txt # 忽略特定的生成结果文件
+
+# Environment files
+.env
+
+# MATLAB auto-save files
+*.asv
+
+# 其他可能的临时文件或日志文件（如果出现的话）
+*.log
+*.tmp
