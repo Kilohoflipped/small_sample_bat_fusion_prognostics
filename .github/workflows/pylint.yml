@@ -1,0 +1,25 @@
+name: Pylint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Miniconda Environment
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniconda-version: 'latest'
+        python-version: '3.12'
+        environment-file: environment.yml
+        activate-environment: LifeDataEstimation
+        auto-update-conda: true
+        auto-activate-base: false
+
+    - name: Analysing the code with pylint
+      run: |
+        pylint $(git ls-files '*.py')
