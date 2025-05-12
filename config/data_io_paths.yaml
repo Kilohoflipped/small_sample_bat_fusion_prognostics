@@ -1,0 +1,11 @@
+# 输入数据路径
+input_data_paths:
+  raw_data_path: "data/raw/InternalLab_Small/battery_aging_cycle_data.xlsx"
+
+# 输出目录
+output_dirs:
+  interim_data: "data/interim"
+  preprocessed_data: "data/interim/preprocessed"
+  result_data: "data/results"
+  synthetic_data: "data/synthetic"
+  plots: "plots"

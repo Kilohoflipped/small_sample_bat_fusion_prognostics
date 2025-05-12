@@ -1,0 +1,35 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+    standard:
+        format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    detailed:
+        format: '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s'
+
+handlers:
+    console:
+        class: logging.StreamHandler
+        formatter: standard
+        level: INFO
+        stream: ext://sys.stdout
+    file:
+        class: logging.handlers.RotatingFileHandler
+        formatter: detailed
+        level: DEBUG
+        filename: all.log # 日志文件名, 可以配置为项目根目录或 logs 目录
+        maxBytes: 5242880 # 5MB (1024 * 1024 * 5)
+        backupCount: 5
+        encoding: utf-8
+    error_file:
+        class: logging.FileHandler
+        formatter: detailed
+        level: ERROR
+        filename: errors.log # 错误日志文件名
+        encoding: utf-8
+
+loggers:
+    '': # 根 logger
+        handlers: ['console', 'file', 'error_file']
+        level: DEBUG
+        propagate: true

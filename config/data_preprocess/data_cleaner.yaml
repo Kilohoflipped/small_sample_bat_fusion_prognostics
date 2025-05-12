@@ -1,0 +1,9 @@
+# 数据清洗配置 (DataCleaner)
+data_cleaner:
+  # 初步清洗参数
+  initial_target_threshold: 22 # target 列的最低阈值
+  initial_cycle_idx_threshold: 0 # cycle_idx 列的最低阈值
+  # 孤立森林算法的参数
+  features_for_isolation_forest: ["target", "cycle_idx"] # 用于孤立森林的特征
+  contamination: 0.03 # 孤立森林污染参数
+  random_state: 42

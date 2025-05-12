@@ -1,0 +1,12 @@
+# 趋势分解配置 (DataDecomposer)
+data_decomposer:
+  target_column: "target_denoised" # 需要分解的目标列
+  K: 7 # VMD 分解模态数
+  alpha: 2000 # VMD 带宽约束参数
+  tau: 0 # VMD 噪声容忍度
+  init: 1 # VMD 初始化方法
+  tol: 1e-7 # VMD 收敛容忍度
+  trend_modes: 4 # 用作趋势的模态数量
+  trend_column_name: "target_denoised_trend" # 趋势列名
+  residual_column_name: "target_denoised_residual" # 残差列名
+  mode_column_prefix: "target_denoised_mode_" # 模态列名前缀

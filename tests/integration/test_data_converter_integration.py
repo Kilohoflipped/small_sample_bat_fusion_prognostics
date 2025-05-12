@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 
 import pathlib
-from src.modules.data_pre_process.data_converter import BatteryDataConverter
+from src.modules.data_preprocess.data_converter import DataConverter
 
 # --- Fixture: 获取测试数据文件路径 ---
 
@@ -43,7 +43,7 @@ def test_convert_and_save_sample_file(sample_xlsx_path, test_results_dir):
     """
     测试 load_and_convert 方法使用 tests/test_data/1111.xlsx 文件，并保存结果到 tests/test_results/
     """
-    converter = BatteryDataConverter()
+    converter = DataConverter()
 
     # 调用要测试的方法
     processed_df = converter.load_and_convert(sample_xlsx_path)

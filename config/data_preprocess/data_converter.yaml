@@ -1,0 +1,6 @@
+# 数据转换配置 (DataConverter)
+data_converter:
+  # 原始数据中的循环序号列名
+  cycle_index_column: "循环序号"
+  # 静态特征解析的正则表达式 pattern (如果需要修改)
+  column_parse_pattern: r"(\d+)#-([\d.]*C)/([\d.]*C)-(-?[\d.]+)°-(-?[\d.]+)pa-(-?[\d.]+)%dod"

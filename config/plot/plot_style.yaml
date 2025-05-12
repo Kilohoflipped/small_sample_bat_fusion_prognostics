@@ -1,0 +1,24 @@
+# 绘图风格配置 (StyleSetter)
+plot_style:
+  title_fontsize: 24 # 标题字体大小
+  label_fontsize: 22 # 标签字体大小
+  tick_fontsize: 20 # 刻度字体大小
+  legend_fontsize: 20 # 图例字体大小
+  line_color_primary: '#1f77b4' # 主线条颜色 (蓝色)
+  line_color_secondary: '#ff7f0e' # 次要线条颜色 (橙色)
+  anomaly_color: '#d62728' # 异常点颜色 (红色)
+  interpolated_color: '#2ca02c' # 插值点颜色 (绿色)
+  background_line_color: '#cccccc' # 背景线颜色 (灰色)
+  grid_color: '#e0e0e0' # 网格颜色
+  spine_color: 'black' # 边框颜色
+  font_family: 'SimSun' # 字体家族 (确保系统支持)
+  axes_unicode_minus: False # 支持 Unicode 负号
+  legend_frameon: False # 图例无边框
+  legend_loc: 'best' # 默认图例位置
+  figure_facecolor: 'white' # 图形背景颜色
+  axes_facecolor: 'white' # 坐标轴背景颜色
+  grid_visible: True # 是否显示网格
+  grid_alpha: 0.6 # 网格透明度
+  line_linewidth: 2.0 # 默认线条宽度
+  scatter_markersize: 60 # 默认散点大小
+  anomaly_markersize: 120 # 异常点散点大小
