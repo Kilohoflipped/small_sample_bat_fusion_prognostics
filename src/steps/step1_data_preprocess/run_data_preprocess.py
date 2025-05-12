@@ -1,18 +1,21 @@
 import logging
-import sys
 import os
-import yaml
+import sys
+from typing import Any, Dict, List
 
-from config.config_loader import find_project_root, load_yaml_config, recursive_merge_configs, collect_yaml_files_from_dir
+from config.config_loader import (
+    collect_yaml_files_from_dir,
+    find_project_root,
+    load_yaml_config,
+    recursive_merge_configs,
+    )
 from config.config_setter import setup_logging
-from src.pipeline.preprocess_pipeline import PreProcessingPipeline
-
-from typing import Optional, Dict, Any, List
+from src.pipeline.preprocess_pipeline import PreprocessingPipeline
 
 logger = logging.getLogger(__name__)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # --- 步骤 1: 配置日志, 收集配置文件路径 ---
     logger.info("数据预处理开始, 开始加载和处理配置...")
 
@@ -74,7 +77,8 @@ if __name__ == '__main__':
     # 检查是否有任何配置文件被收集到
     if not all_config_files:
         logger.error(
-            f"错误: 未找到任何配置文件, 以及指定配置目录下的 *.yaml 文件). 基础配置缺失. 流程终止.")
+            f"错误: 未找到任何配置文件, 以及指定配置目录下的 *.yaml 文件). 基础配置缺失. 流程终止."
+        )
         sys.exit(1)
     else:
         logger.info(f"已收集 {len(all_config_files)} 个配置文件路径.")
@@ -103,11 +107,13 @@ if __name__ == '__main__':
 
     # 实例化并运行 Pipeline
     try:
-        pipeline = PreProcessingPipeline(config)
+        pipeline = PreprocessingPipeline(config, project_root)
         pipeline.run()
     except Exception as e:
         # 捕获 Pipeline 运行过程中的任何未处理异常
-        logger.exception(f"数据预处理流程执行过程中发生未处理错误: {e}")  # 使用 exception 记录详细 traceback
+        logger.exception(
+            f"数据预处理流程执行过程中发生未处理错误: {e}"
+        )  # 使用 exception 记录详细 traceback
         sys.exit(1)  # 流程执行失败，退出程序
 
     logger.info("数据预处理流程执行完毕.")

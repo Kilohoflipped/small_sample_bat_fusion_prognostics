@@ -27,56 +27,38 @@ class DataPreprocessor:
         """
         self.config = config
         # 初始化各个具体处理模块，将对应的配置传递给它们
-        self.data_converter = DataConverter(config.get('data_converter', {}))
-        self.data_cleaner = DataCleaner(config.get('data_cleaner', {}))
-        self.data_imputer = DataImputer(config.get('data_imputer', {}))
-        self.data_denoiser = DataDenoiser(config.get('data_denoiser', {}))
-        self.data_decomposer = DataDecomposer(config.get('data_decomposer', {}))
+        self.data_converter = DataConverter(config.get("data_converter", {}))
+        self.data_cleaner = DataCleaner(config.get("data_cleaner", {}))
+        self.data_imputer = DataImputer(config.get("data_imputer", {}))
+        self.data_denoiser = DataDenoiser(config.get("data_denoiser", {}))
+        self.data_decomposer = DataDecomposer(config.get("data_decomposer", {}))
 
         logger.info("DataPreprocessor 初始化完成，已加载各处理模块.")
 
-    def load_data(self, raw_data_path_excel: str, initial_csv_path: str) -> pd.DataFrame:
+    def load_data(self, raw_data_path: str) -> pd.DataFrame:
         """
-        加载原始数据文件 (.xlsx 或 .csv) 并转换为标准长格式.
+        加载原始数据文件并转换为标准长格式
 
         Args:
-            raw_data_path_excel (str): 原始 Excel 文件路径.
-            initial_csv_path (str): 初始 CSV 文件路径 (如果从 CSV 开始处理).
+            raw_data_path (str): 原始文件路径
 
         Returns:
-            pd.DataFrame: 转换为长格式并初步整理后的 DataFrame.
-                          如果加载或转换失败, 返回空 DataFrame.
+            pd.DataFrame: 转换为长格式并初步整理后的 DataFrame
+                          如果加载或转换失败, 返回空 DataFrame
         """
         logger.info("DataPreprocessor: 开始数据加载和转换...")
-        raw_df = pd.DataFrame()
+        converted_df = pd.DataFrame()
 
-        # 优先加载 Excel，如果不存在则尝试加载 CSV
-        if raw_data_path_excel and os.path.exists(raw_data_path_excel):
-            raw_df = self.data_converter.load_and_convert(raw_data_path_excel)
-        elif initial_csv_path and os.path.exists(initial_csv_path):
-            # 如果从 CSV 开始，假设已经是长格式且列名已标准化
-            logger.info(f"DataPreprocessor: Excel 文件不存在或未配置，尝试加载初始 CSV 文件: {initial_csv_path}")
-            try:
-                raw_df = pd.read_csv(initial_csv_path)
-                logger.info(f"DataPreprocessor: 成功加载初始 CSV 数据，形状: {raw_df.shape}")
-                # 检查必要列是否存在 (对于 CSV 输入)
-                required_cols_csv = ['battery_id', 'cycle_idx', 'target']
-                if not all(col in raw_df.columns for col in required_cols_csv):
-                    logger.error(f"DataPreprocessor: 初始 CSV 文件缺少必要列 {
-                        required_cols_csv}. 请检查文件或使用 Excel 输入.")
-                    raw_df = pd.DataFrame()  # 清空数据，终止后续处理
-            except Exception as e:
-                logger.error(f"DataPreprocessor: 加载初始 CSV 文件 '{initial_csv_path}' 时发生错误: {e}")
-                raw_df = pd.DataFrame()  # 清空数据，终止后续处理
-
+        if raw_data_path and os.path.exists(raw_data_path):
+            converted_df = self.data_converter.load_and_convert(raw_data_path)
         else:
-            logger.error("DataPreprocessor: 未找到配置的数据输入文件 (Excel 或初始 CSV).")
+            logger.error("DataPreprocessor: 未找到配置的数据输入文件.")
 
-        if raw_df.empty:
+        if converted_df.empty:
             logger.error("DataPreprocessor: 数据加载和转换后为空.")
 
         logger.info("DataPreprocessor: 数据加载和转换流程完成.")
-        return raw_df
+        return converted_df
 
     def clean_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -101,12 +83,13 @@ class DataPreprocessor:
         logger.info(
             f"DataPreprocessor: 数据清洗完成. 清洗后数据形状: {
                 df_cleaned.shape}, 检测到异常点数量: {
-                len(df_anomalies)}.")
+                len(df_anomalies)}."
+        )
         return df_cleaned, df_anomalies
 
     def impute_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        执行缺失值处理步骤.
+        执行缺失值处理步骤
 
         Args:
             df (pd.DataFrame): 输入数据 (通常是清洗后的数据).

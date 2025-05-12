@@ -1,9 +1,10 @@
+import logging
+from typing import Any, Dict, Tuple
+
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-import logging
-from typing import Dict, Any, Tuple, List
-import numpy as np
 
 
 class DataCleaner:
@@ -18,16 +19,17 @@ class DataCleaner:
         Args:
             config (Dict[str, Any]): 数据清洗相关的配置字典.
         """
-        self.config = config.get('data_cleaner', {})
+        self.config = config.get("data_cleaner", {})
         self.features_for_isolation_forest = self.config.get(
-            'features_for_isolation_forest', ['target', 'cycle_idx'])
-        self.contamination = self.config.get('contamination', 0.05)
-        self.random_state = self.config.get('random_state', 42)
-        self.anomaly_column_name = self.config.get('anomaly_column_name', 'anomaly')
+            "features_for_isolation_forest", ["target", "cycle_idx"]
+        )
+        self.contamination = self.config.get("contamination", 0.05)
+        self.random_state = self.config.get("random_state", 42)
+        self.anomaly_column_name = self.config.get("anomaly_column_name", "anomaly")
 
         # 从配置中获取初步清洗的阈值
-        self.initial_target_threshold = self.config.get('initial_target_threshold', None)
-        self.initial_cycle_idx_threshold = self.config.get('initial_cycle_idx_threshold', None)
+        self.initial_target_threshold = self.config.get("initial_target_threshold", 22)
+        self.initial_cycle_idx_threshold = self.config.get("initial_cycle_idx_threshold", None)
 
         self.scaler = StandardScaler()
         self.isolation_forest_model: IsolationForest | None = None  # 初始化为 None
@@ -49,37 +51,44 @@ class DataCleaner:
         cleaned_df = df.copy()
 
         # 检查必要列是否存在
-        required_cols = ['battery_id', 'cycle_idx', 'target']
+        required_cols = ["battery_id", "cycle_idx", "target"]
         if not all(col in cleaned_df.columns for col in required_cols):
-            logging.error(f"初步清洗失败: 输入 DataFrame 缺少必要列 {required_cols}. 返回原始 DataFrame.")
+            logging.error(
+                f"初步清洗失败: 输入 DataFrame 缺少必要列 {required_cols}. 返回原始 DataFrame."
+            )
             return df  # 如果缺少关键列，不进行初步清洗
 
         # 移除 target 或 cycle_idx 为 NaN 的行
-        cleaned_df = cleaned_df.dropna(subset=['target', 'cycle_idx']).copy()
+        cleaned_df = cleaned_df.dropna(subset=["target", "cycle_idx"]).copy()
         dropped_nan_rows = initial_rows - len(cleaned_df)
         if dropped_nan_rows > 0:
-            logging.info(f"初步清洗: 移除 target 或 cycle_idx 为 NaN 的行, 减少了 {dropped_nan_rows} 行.")
+            logging.info(
+                f"初步清洗: 移除 target 或 cycle_idx 为 NaN 的行, 减少了 {dropped_nan_rows} 行."
+            )
             initial_rows = len(cleaned_df)  # 更新基准行数
 
         # 应用 target 阈值过滤
         if self.initial_target_threshold is not None:
-            cleaned_df = cleaned_df[cleaned_df['target'] > self.initial_target_threshold].copy()
+            cleaned_df = cleaned_df[cleaned_df["target"] > self.initial_target_threshold].copy()
             dropped_target_rows = initial_rows - len(cleaned_df)
             if dropped_target_rows > 0:
                 logging.info(
                     f"初步清洗: 移除 target <= {
-                        self.initial_target_threshold} 的行, 减少了 {dropped_target_rows} 行.")
+                        self.initial_target_threshold} 的行, 减少了 {dropped_target_rows} 行."
+                )
                 initial_rows = len(cleaned_df)  # 更新基准行数
 
         # 应用 cycle_idx 阈值过滤
         if self.initial_cycle_idx_threshold is not None:
-            cleaned_df = cleaned_df[cleaned_df['cycle_idx']
-                                    > self.initial_cycle_idx_threshold].copy()
+            cleaned_df = cleaned_df[
+                cleaned_df["cycle_idx"] > self.initial_cycle_idx_threshold
+            ].copy()
             dropped_cycle_rows = initial_rows - len(cleaned_df)
             if dropped_cycle_rows > 0:
                 logging.info(
                     f"初步清洗: 移除 cycle_idx <= {
-                        self.initial_cycle_idx_threshold} 的行, 减少了 {dropped_cycle_rows} 行.")
+                        self.initial_cycle_idx_threshold} 的行, 减少了 {dropped_cycle_rows} 行."
+                )
 
         logging.info(f"初步数据过滤完成, 剩余数据形状: {cleaned_df.shape}.")
         return cleaned_df
@@ -102,18 +111,25 @@ class DataCleaner:
         # 检查用于异常检测的特征列是否存在
         if not all(col in df_with_anomaly.columns for col in self.features_for_isolation_forest):
             missing_cols = [
-                col for col in self.features_for_isolation_forest if col not in df_with_anomaly.columns]
-            logging.error(f"孤立森林异常检测失败: 输入 DataFrame 缺少特征列 {missing_cols}. 跳过异常检测.")
+                col
+                for col in self.features_for_isolation_forest
+                if col not in df_with_anomaly.columns
+            ]
+            logging.error(
+                f"孤立森林异常检测失败: 输入 DataFrame 缺少特征列 {missing_cols}. 跳过异常检测."
+            )
             return df_with_anomaly  # 返回默认标记为正常的 DataFrame
 
-        for bid in df_with_anomaly['battery_id'].unique():
+        for bid in df_with_anomaly["battery_id"].unique():
             # 过滤出当前电池的数据，并确保按 cycle_idx 排序
-            df_bid_mask = df_with_anomaly['battery_id'] == bid
+            df_bid_mask = df_with_anomaly["battery_id"] == bid
             df_bid = df_with_anomaly.loc[df_bid_mask, self.features_for_isolation_forest].copy()
-            df_bid = df_bid.sort_values('cycle_idx')
+            df_bid = df_bid.sort_values("cycle_idx")
 
             if len(df_bid) < 2:
-                logging.warning(f"电池 {bid} 数据点少于 2 个 ({len(df_bid)}), 无法进行孤立森林检测. 标记为正常.")
+                logging.warning(
+                    f"电池 {bid} 数据点少于 2 个 ({len(df_bid)}), 无法进行孤立森林检测. 标记为正常."
+                )
                 # 这些电池已经默认标记为正常 (1)
                 continue
 
@@ -135,10 +151,14 @@ class DataCleaner:
                 # 将预测结果应用回原始 DataFrame
                 df_with_anomaly.loc[df_bid_mask, self.anomaly_column_name] = anomaly_predictions
 
-                logging.debug(f"电池 {bid} 孤立森林检测完成. 检测到异常点数量: {np.sum(anomaly_predictions == -1)}")
+                logging.debug(
+                    f"电池 {bid} 孤立森林检测完成. 检测到异常点数量: {np.sum(anomaly_predictions == -1)}"
+                )
 
             except Exception as e:
-                logging.error(f"对电池 {bid} 进行孤立森林异常检测时发生错误: {e}. 该电池数据将标记为正常.")
+                logging.error(
+                    f"对电池 {bid} 进行孤立森林异常检测时发生错误: {e}. 该电池数据将标记为正常."
+                )
                 # 发生错误时，该电池数据保持默认标记 (1)
 
         logging.info("孤立森林异常检测完成.")
@@ -165,11 +185,19 @@ class DataCleaner:
 
         # Step 3: 分离正常数据和异常数据
         # 使用配置中的异常列名
-        df_cleaned = df_with_anomaly[df_with_anomaly[self.anomaly_column_name] == 1].drop(
-            columns=[self.anomaly_column_name]).copy()
-        df_anomalies = df_with_anomaly[df_with_anomaly[self.anomaly_column_name]
-                                       == -1].drop(columns=[self.anomaly_column_name]).copy()
+        df_cleaned = (
+            df_with_anomaly[df_with_anomaly[self.anomaly_column_name] == 1]
+            .drop(columns=[self.anomaly_column_name])
+            .copy()
+        )
+        df_anomalies = (
+            df_with_anomaly[df_with_anomaly[self.anomaly_column_name] == -1]
+            .drop(columns=[self.anomaly_column_name])
+            .copy()
+        )
 
-        logging.info(f"数据清洗流程完成. 清洗后数据形状: {df_cleaned.shape}, 检测到异常点数量: {len(df_anomalies)}.")
+        logging.info(
+            f"数据清洗流程完成. 清洗后数据形状: {df_cleaned.shape}, 检测到异常点数量: {len(df_anomalies)}."
+        )
 
         return df_cleaned, df_anomalies
