@@ -12,7 +12,7 @@ from config.config_loader import (
     find_config_dir,
     find_project_root_dir,
     load_and_merge_configs,
-)
+    )
 from config.config_setter import setup_logging
 from src.models import data_loader, vae_model
 
@@ -141,7 +141,7 @@ def main():
 
     # --- 模型训练 ---
     logger.info("开始训练 VAE 模型.")
-    vae_model.train_vae(vae, dataloader, num_epochs, device_using, enable_teacher_forcing=False)
+    vae_model.train_vae(vae, dataloader, num_epochs, device_using, enable_teacher_forcing=True)
     logger.info("VAE 模型训练完成.")
 
     # --- 模型保存 ---

@@ -12,6 +12,6 @@ vae_model:
   latent_dim: 64
 
   # 训练轮次
-  num_epochs: 1000
+  num_epochs: 5000
   # 训练批次大小
   batch_size: 12

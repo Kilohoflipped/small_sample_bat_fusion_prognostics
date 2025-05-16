@@ -312,20 +312,23 @@ def vae_loss(
     mu: torch.Tensor,
     logvar: torch.Tensor,
     lengths: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    monotonicity_feature_dim: int = 0,  # 指定需要单调性的特征维度 (默认为第一个)
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    计算VAE损失: 重构损失 (使用MSE) 和 KL散度.
-    重构损失通过掩码处理变长序列.
+    计算VAE损失: 重构损失 (使用MSE), KL散度 和 单调性损失.
+    重构损失和单调性损失通过掩码处理变长序列.
 
     Args:
         reconstructed_sequences (Tensor): 从潜空间重建的序列, (batch_size, max_seq_len, output_dim).
         input_sequences (Tensor): 填充后的输入序列, (batch_size, max_seq_len, input_dim).
         mu (Tensor): 潜空间分布的均值向量, (batch_size, latent_dim).
         logvar (Tensor): 潜空间分布的对数方差向量, (batch_size, latent_dim).
-        lengths (Tensor): 每个序列的实际长度, (batch_size,). 用于重构损失的掩码.
+        lengths (Tensor): 每个序列的实际长度, (batch_size,). 用于损失的掩码.
+        monotonicity_feature_dim (int): 需要检查单调性的特征维度索引.
 
     Returns:
-        tuple: (recon_loss, kl_loss) - 平均重构损失和平均KL散度损失 (均平均到每个样本).
+        tuple: (recon_loss, kl_loss, mono_loss) -
+               平均重构损失, 平均KL散度损失, 平均单调性损失 (均平均到每个样本或有效元素).
     """
     batch_size = input_sequences.size(0)
     max_seq_len = input_sequences.size(1)
@@ -340,13 +343,13 @@ def vae_loss(
     mask = torch.arange(max_seq_len, device=device).unsqueeze(0) < lengths.unsqueeze(1)
 
     # 将掩码扩展到与 MSE 相同的维度以便逐元素相乘
-    mask = mask.unsqueeze(-1).expand_as(mse_per_element)
+    mask_recon = mask.unsqueeze(-1).expand_as(mse_per_element)
 
     # 将掩码转换为浮点类型, 以便与误差相乘
-    mask = mask.float()
+    mask_recon = mask_recon.float()
 
     # 应用掩码, 使得填充位置的误差为 0
-    masked_mse = mse_per_element * mask
+    masked_mse = mse_per_element * mask_recon
 
     # 计算所有有效元素的总误差. 先在时间步和特征维度求和, 再在批次维度求和
     total_recon_error = torch.sum(masked_mse)
@@ -371,7 +374,45 @@ def vae_loss(
     # 平均 KL 散度损失到整个批次
     kl_loss = torch.mean(kl_loss_per_sample)
 
-    return recon_loss, kl_loss
+    # --- 单调性损失 (Monotonicity Loss) ---
+    mono_loss = torch.zeros(1, device=device)  # 初始化单调性损失
+
+    if reconstructed_sequences.size(2) > monotonicity_feature_dim:
+        # 提取需要检查单调性的特征序列
+        reconstructed_feature = reconstructed_sequences[
+            :, :, monotonicity_feature_dim
+        ]  # 形状: (batch_size, max_seq_len)
+
+        # 计算相邻时间步的差值 (diff_t = value_t+1 - value_t)
+        # 形状: (batch_size, max_seq_len - 1)
+        differences = reconstructed_feature[:, 1:] - reconstructed_feature[:, :-1]
+
+        # 创建一个掩码, 形状为 (batch_size, max_seq_len - 1)
+        # 对于长度为 L 的序列, 我们检查到 L-2 索引处 (对应 max_seq_len - 1 差值)
+        # 掩码值为 True 表示是有效的时间步差值 (t 到 t+1, 且 t+1 < length)
+        mask_mono = torch.arange(max_seq_len - 1, device=device).unsqueeze(0) < (
+            lengths.unsqueeze(1) - 1
+        )
+        mask_mono = mask_mono.float()  # 转换为浮点类型
+
+        # 只考虑违反单调性 (上升) 的差值, 并应用掩码
+        # max(0, diff) 用于只惩罚正的差值 (value_t+1 > value_t)
+        violation_diffs = torch.relu(differences)  # Relu(diff) = max(0, diff)
+
+        # 应用掩码
+        masked_violation_diffs = violation_diffs * mask_mono
+
+        # 计算每个序列的单调性惩罚总和
+        sum_violation_diffs_per_sample = torch.sum(
+            masked_violation_diffs, dim=-1
+        )  # 形状: (batch_size,)
+
+        # 将损失平均到整个批次
+        # 也可以选择平均到每个序列的有效时间步差值数量 (lengths - 1)
+        # 这里我们平均到整个批次大小
+        mono_loss = torch.mean(sum_violation_diffs_per_sample)
+
+    return recon_loss, kl_loss, mono_loss
 
 
 def train_one_epoch(
@@ -384,30 +425,33 @@ def train_one_epoch(
     enable_teacher_forcing: bool,
     sampling_probability: float,
     beta: float,
-) -> Tuple[float, float, float, int]:
+    monotonicity_weight: float = 1.0,
+) -> Tuple[float, float, float, float, int]:
     """
-    在一个 epoch 中训练模型.
+    在一个 epoch 中训练模型
     Args:
-        model (ConditionalVAE): 要训练的模型实例.
-        dataloader (torch.utils.data.DataLoader): 训练数据的数据加载器.
-        optimizer (torch.optim.Optimizer): 模型的优化器.
-        epoch (int): 当前的 epoch 数 (从 0 开始).
-        num_epochs (int): 训练的总 epoch 数.
-        device (torch.device): 训练设备.
-        enable_teacher_forcing (bool): 是否启用教师forcing.
-        sampling_probability (float): 当前 epoch 的计划采样概率.
-        beta (float): 当前 epoch 的 KL 散度权重.
+        model (ConditionalVAE): 要训练的模型实例
+        dataloader (torch.utils.data.DataLoader): 训练数据的数据加载器
+        optimizer (torch.optim.Optimizer): 模型的优化器
+        epoch (int): 当前的 epoch 数 (从 0 开始)
+        num_epochs (int): 训练的总 epoch 数
+        device (torch.device): 训练设备
+        enable_teacher_forcing (bool): 是否启用教师forcing
+        sampling_probability (float): 当前 epoch 的计划采样概率
+        beta (float): 当前 epoch 的 KL 散度权重
+        monotonicity_weight (float): 单调性损失权重
     Returns:
-        Tuple: 平均总损失, 平均重构损失, 平均 KL 损失, 处理的批次数量.
+        Tuple: 平均总损失, 平均重构损失, 平均 KL 损失, 平均单调性损失, 处理的批次数量
     """
     model.train()
     total_loss = 0
     total_recon = 0
     total_kl = 0
+    total_mono = 0
     num_batches = 0
 
     print(
-        f"Epoch {epoch + 1}/{num_epochs}, Sampling Probability: {sampling_probability:.4f}, Current Beta: {beta:.4f}"
+        f"Epoch {epoch + 1}/{num_epochs}, Sampling Probability: {sampling_probability:.4f}, Current Beta: {beta:.4f}, Monotonicity Weight: {monotonicity_weight:.4f}"
     )
 
     for batch in dataloader:
@@ -462,9 +506,16 @@ def train_one_epoch(
 
         # 计算重构损失和 KL 散度损失
         # 假设 vae_loss 函数能够处理 padded 序列和对应的长度
-        recon_loss, kl_loss = vae_loss(reconstructed_sequences, sequences, mu, logvar, lengths)
+        recon_loss, kl_loss, mono_loss = vae_loss(  # 调用 vae_loss 并接收 mono_loss
+            reconstructed_sequences,
+            sequences,
+            mu,
+            logvar,
+            lengths,
+        )
+
         # 计算总损失: 重构损失 + beta * KL散度损失
-        loss = recon_loss + beta * kl_loss
+        loss = recon_loss + beta * kl_loss + mono_loss * monotonicity_weight
 
         # 检查损失是否有效 (非 NaN/Inf)
         if not torch.isfinite(loss):
@@ -482,6 +533,7 @@ def train_one_epoch(
         total_loss += loss.item()
         total_recon += recon_loss.item()
         total_kl += kl_loss.item()
+        total_mono += mono_loss.item()
         num_batches += 1
 
     # 计算并返回平均损失
@@ -489,10 +541,16 @@ def train_one_epoch(
         avg_loss = total_loss / num_batches
         avg_recon = total_recon / num_batches
         avg_kl = total_kl / num_batches
-        print(f"Avg Loss: {avg_loss:.4f}, Avg Recon: {avg_recon:.4f}, Avg KL: {avg_kl:.4f}")
-        return avg_loss, avg_recon, avg_kl, num_batches
+        avg_mono = total_mono / num_batches
+        print(
+            f"Avg Loss: {avg_loss:.4f}, "
+            f"Avg Recon: {avg_recon:.4f}, "
+            f"Avg KL: {avg_kl:.4f}, "
+            f"Avg Mono: {avg_mono:.4f}"
+        )
+        return avg_loss, avg_recon, avg_kl, avg_mono, num_batches
     else:
-        return 0.0, 0.0, 0.0, 0  # 如果没有有效批次, 返回 0
+        return 0.0, 0.0, 0.0, 0.0, 0  # 如果没有有效批次, 返回 0
 
 
 def train_vae(
@@ -519,8 +577,8 @@ def train_vae(
 
     # KL 散度权重 (beta) 的 sigmoid warm-up 计划参数
     beta_max = 0.1  # KL 权重的最大值
-    beta_sigmoid_center_ratio = 0.25  # sigmoid 中心点占总 epoch 的比例
-    beta_sigmoid_steepness = 0.01  # sigmoid 陡峭程度 (数值越大越陡峭)
+    beta_sigmoid_center_ratio = 0.05  # sigmoid 中心点占总 epoch 的比例 # 0.25优
+    beta_sigmoid_steepness = 0.1  # sigmoid 陡峭程度 (数值越大越陡峭)
 
     for epoch in range(num_epochs):
         # 获取当前 epoch 的计划采样概率和 beta 值
@@ -535,8 +593,16 @@ def train_vae(
             steepness=beta_sigmoid_steepness,
         )
 
+        current_monotonicity_weight = get_linear_warmup_schedule(
+            epoch,
+            num_epochs,
+            0,
+            1,
+            0.015,  # 传入 Warm-up 比例
+        )
+
         # 训练一个 epoch
-        avg_loss, avg_recon, avg_kl, num_batches = train_one_epoch(
+        avg_loss, avg_recon, avg_kl, avg_mono, num_batches = train_one_epoch(
             model=model,
             dataloader=dataloader,
             optimizer=optimizer,
@@ -546,6 +612,7 @@ def train_vae(
             enable_teacher_forcing=enable_teacher_forcing,
             sampling_probability=current_sampling_probability,
             beta=current_beta,
+            monotonicity_weight=current_monotonicity_weight,
         )
 
         # 根据平均总损失更新学习率
@@ -600,3 +667,59 @@ def get_beta_sigmoid(
     safe_arg = max(-70.0, min(70.0, arg))  # 使用更稳健的范围
     sigmoid_val = 1 / (1 + math.exp(-safe_arg))
     return beta_max * sigmoid_val
+
+
+def get_linear_warmup_schedule(
+    epoch: int,
+    num_epochs: int,
+    start_weight: float,
+    end_weight: float,
+    warmup_ratio: float,  # Warm-up 阶段占总 epoch 的比例
+) -> float:
+    """
+    计算当前 epoch 的带有 Warm-up 的线性调度权重.
+    在 Warm-up 阶段 (前 warmup_ratio * num_epochs), 权重保持 start_weight.
+    之后线性增加到 end_weight.
+    Args:
+        epoch (int): 当前的 epoch 数 (从 0 开始).
+        num_epochs (int): 训练的总 epoch 数.
+        start_weight (float): 调度的起始权重 (Warm-up 阶段的权重).
+        end_weight (float): 调度的最终权重.
+        warmup_ratio (float): Warm-up 阶段占总 epoch 的比例 (0.0 到 1.0).
+    Returns:
+        float: 当前 epoch 的权重.
+    """
+    # 计算 Warm-up 阶段的 epoch 数量
+    warmup_epochs_count = int(num_epochs * warmup_ratio)
+
+    # 如果当前 epoch 在 Warm-up 阶段之前, 权重等于起始权重
+    if epoch < warmup_epochs_count:
+        return start_weight
+
+    # 计算线性增加阶段的总 epoch 数量
+    # 线性阶段从 warmup_epochs_count 开始, 到 num_epochs - 1 结束
+    epochs_in_linear_phase = num_epochs - warmup_epochs_count
+
+    # 如果线性阶段没有或只有一个 epoch, 且当前 epoch >= Warm-up 结束点, 直接返回最终权重
+    # 或者 Warm-up 持续到总 epoch 数之后, 始终返回 start_weight
+    if epochs_in_linear_phase <= 1:
+        if warmup_epochs_count >= num_epochs:  # Warm-up 持续到或超过总 epoch 数
+            return start_weight
+        else:  # 线性阶段只有 0 或 1 个 epoch
+            return end_weight if epoch >= warmup_epochs_count else start_weight
+
+    # 计算当前 epoch 在线性增加阶段中的位置 (从 0 开始计数)
+    current_epoch_in_linear_phase = epoch - warmup_epochs_count
+
+    # 计算当前 epoch 在线性阶段中完成的比例 (0.0 到 1.0)
+    # 使用 epochs_in_linear_phase - 1 来确保在线性阶段的最后一个 epoch 达到 end_weight
+    ratio = float(current_epoch_in_linear_phase) / (epochs_in_linear_phase - 1)
+
+    # Clamp 比例在 0 到 1 之间 (理论上不需要, 但更安全)
+    ratio = max(0.0, min(1.0, ratio))
+
+    # 在起始权重和最终权重之间进行线性插值
+    current_weight = start_weight + (end_weight - start_weight) * ratio
+
+    # 确保权重在起始和最终值之间
+    return max(start_weight, min(end_weight, current_weight))

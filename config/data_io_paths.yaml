@@ -11,4 +11,4 @@ output_dirs:
 
   plots: "plots"
 
-  vae_model : "models/vae"
+  vae_model : "checkpoints/vae"
