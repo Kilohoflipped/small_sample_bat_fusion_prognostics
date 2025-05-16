@@ -19,7 +19,7 @@ handlers:
         level: DEBUG
         filename: all.log # 日志文件名, 可以配置为项目根目录或 logs 目录
         maxBytes: 5242880 # 5MB (1024 * 1024 * 5)
-        backupCount: 5
+        backupCount: 1
         encoding: utf-8
     error_file:
         class: logging.FileHandler

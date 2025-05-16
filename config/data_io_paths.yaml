@@ -8,4 +8,7 @@ output_dirs:
   preprocessed_data: "data/interim/preprocessed"
   result_data: "data/results"
   synthetic_data: "data/synthetic"
+
   plots: "plots"
+
+  vae_model : "models/vae"

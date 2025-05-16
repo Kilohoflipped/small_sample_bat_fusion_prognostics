@@ -1,5 +1,0 @@
-# 绘图参数
-plot_params:
-  plot_size_cm: [18, 12] # 坐标轴区域大小，单位厘米 (宽，高)
-  dpi: 300 # 图片分辨率
-  overall_plot_max_batteries: 30 # 总体序列图绘制的最大电池数量

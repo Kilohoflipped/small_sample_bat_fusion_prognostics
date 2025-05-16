@@ -1,7 +1,3 @@
 # 缺失值处理配置 (DataImputer)
 data_imputer:
-  target_column: "target" # 需要处理缺失值的目标列
-  max_ffill_limit: 3 # 前向填充的最大限制
   interpolation_method: "linear" # 插值方法 (linear, polynomial, spline 等)
-  # 其他列的填充方法 (ffill+bfill 是默认，如果需要其他方法可以在这里配置)
-  other_column_fill_method: "ffill_bfill" # 或 "mode", "mean" 等

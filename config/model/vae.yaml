@@ -1,0 +1,17 @@
+vae_model:
+
+  # 输入特征维度 (电池容量是单变量时间序列)
+  input_dim: 1
+  # 输出特征维度 (电池容量是单变量时间序列)
+  output_dim: 1
+  # 环境条件维度 (充电率, 放电率, 温度, 压强, DOD)
+  condition_dim: 5
+  # LSTM 隐藏层维度
+  hidden_dim: 128
+  # 潜空间维度 (VAE 编码器的输出维度)
+  latent_dim: 64
+
+  # 训练轮次
+  num_epochs: 1000
+  # 训练批次大小
+  batch_size: 12

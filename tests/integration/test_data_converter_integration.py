@@ -1,8 +1,10 @@
-import pytest
-import pandas as pd
-
 import pathlib
+
+import pandas as pd
+import pytest
+
 from src.modules.data_preprocess.data_converter import DataConverter
+
 
 # --- Fixture: 获取测试数据文件路径 ---
 
@@ -13,13 +15,14 @@ def sample_xlsx_path(request):
     # __file__ 是当前文件路径，parent 是其父目录 (tests/integration/)
     test_file_dir = pathlib.Path(request.fspath).parent
     # 从 tests/integration/ 退回到 tests/ (用 '..')，然后进入 test_data/ 找到文件
-    data_file_path = test_file_dir / '..' / 'test_data' / 'battery_aging_cycle_data.xlsx'
+    data_file_path = test_file_dir / ".." / "test_data" / "battery_aging_cycle_data.xlsx"
 
     # 确保文件存在，否则跳过测试
     if not data_file_path.exists():
         pytest.skip(f"测试数据文件不存在: {data_file_path}")
 
     return str(data_file_path)  # load_and_convert 接收字符串路径
+
 
 # --- Fixture: 获取并创建测试结果目录 ---
 
@@ -29,12 +32,13 @@ def test_results_dir(request):
     # 获取当前测试文件所在的目录 (tests/integration/)
     test_file_dir = pathlib.Path(request.fspath).parent
     # 构建测试结果目录路径: 从 tests/integration/ 返回一层到 tests/，然后进入 test_results/
-    results_dir = test_file_dir / '..' / 'test_results'
+    results_dir = test_file_dir / ".." / "test_results"
 
     # 如果目录不存在，则创建它
     results_dir.mkdir(parents=True, exist_ok=True)
 
     return results_dir  # 返回 Path 对象
+
 
 # --- 集成测试用例 ---
 
@@ -54,11 +58,15 @@ def test_convert_and_save_sample_file(sample_xlsx_path, test_results_dir):
 
     # 2. 检查 DataFrame 是否非空
     # 如果文件可能导致转换失败或结果为空，这里的断言需要相应调整
-    assert not processed_df.empty, f"转换结果是空的 DataFrame，检查文件内容和解析逻辑是否有问题：{sample_xlsx_path}"
+    assert (
+        not processed_df.empty
+    ), f"转换结果是空的 DataFrame，检查文件内容和解析逻辑是否有问题：{sample_xlsx_path}"
 
     # 3. 检查是否包含预期的关键列
-    expected_cols = ['cycle_idx', 'target', 'battery_id']
-    assert all(col in processed_df.columns for col in expected_cols), "转换后的 DataFrame 缺少预期的关键列"
+    expected_cols = ["cycle_idx", "target", "battery_id"]
+    assert all(
+        col in processed_df.columns for col in expected_cols
+    ), "转换后的 DataFrame 缺少预期的关键列"
 
     # --- 保存结果到 CSV（这是测试的副作用，用于人工检查） ---
     if not processed_df.empty:

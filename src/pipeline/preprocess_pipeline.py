@@ -4,418 +4,303 @@ from typing import Any, Dict, Tuple
 
 import pandas as pd
 
-from src.modules.data_preprocess.data_preprocesser import DataPreprocessor
-from src.modules.visualization.plotter.preprocess import PreprocessPlotter
-from src.modules.visualization.style_setter import StyleSetter
+from src.modules.data_preprocess.data_cleaner import DataCleaner
+
+# 导入各个独立的处理器类
+# 假设这些类位于 src.modules.data_preprocess 子目录下
+from src.modules.data_preprocess.data_converter import DataConverter
+from src.modules.data_preprocess.data_denoiser import DataDenoiser
+from src.modules.data_preprocess.data_imputer import DataImputer
+from src.modules.data_preprocess.data_standardizer import DataStandardizer
+
+# 移除绘图相关的导入
+
 
 logger = logging.getLogger(__name__)
 
 
 class PreprocessingPipeline:
     """
-    数据预处理流程的编排者
-    负责加载配置、创建目录、按顺序执行预处理步骤、保存中间结果和生成图表
+    数据预处理流程的管线 (无绘图功能).
+    负责加载配置、创建目录、按顺序执行预处理步骤、保存中间结果.
+    直接协调各个独立的处理器类.
     """
 
-    def __init__(self, config: Dict[str, Any], project_root):
+    def __init__(self, config: Dict[str, Any], project_root: str):
         """
-        初始化 PreprocessingPipeline
+        初始化 PreprocessingPipeline.
+
+        根据提供的配置初始化各个独立的处理器. 不包含绘图工具的初始化.
 
         Args:
-            config (Dict[str, Any]): 包含所有流程配置的字典
+            config (Dict[str, Any]): 包含所有流程配置的字典.
+            project_root (str): 项目根目录的路径.
         """
         self.config = config
         self.project_root = project_root
 
-        # 初始化 DataPreprocessor 和 PreprocessPlotter，将对应的配置传递给它们
-        self.preprocessor = DataPreprocessor(config)
+        # 初始化各个独立的处理器，将完整的 config 传递给它们
+        try:
+            self.converter = DataConverter(self.config)
+            self.cleaner = DataCleaner(self.config)
+            self.imputer = DataImputer(self.config)
+            self.denoiser = DataDenoiser(self.config)
+            self.standardizer = DataStandardizer(self.config)
 
-        # 初始化 StyleSetter 和 PreprocessPlotter
-        style_setter = StyleSetter(config.get("plot_style", {}))
-        # 临时应用全局风格，主要用于字体等，只在这里应用一次
-        style_setter.apply_global_style()
+        except Exception as e:
+            logger.error("初始化数据处理器时发生错误: %s", e, exc_info=True)
+            # 在初始化阶段发生错误是致命的，抛出错误
+            raise RuntimeError(f"初始化数据处理器时发生错误: {e}") from e
 
-        plot_params = config.get("plot_params", {})
-        plot_size_cm = plot_params.get("plot_size_cm", (16, 11))
-        plot_dpi = plot_params.get("dpi", 300)
-        self.overall_plot_max_batteries = plot_params.get("overall_plot_max_batteries", 20)
-
-        self.plotter = PreprocessPlotter(style_setter, plot_size_cm, plot_dpi)
+        # 移除绘图工具的初始化
 
         # 获取路径配置
-        self.data_paths = config.get("input_data_paths", {})
+        self.input_data_paths = config.get("input_data_paths", {})
         self.output_dirs = config.get("output_dirs", {})
+        # 获取原始数据转换后的目标列名，这是整个处理流程的起点
+        # DataConverter 的 target_column 配置项现在用于指定转换后的目标列名
+        self.initial_target_column = config.get("data_converter", {}).get("target_column", "target")
 
-        # 定义输出文件路径
-        self.processed_data_dir = (
-            self.project_root
-            + "/"
-            + self.output_dirs.get("preprocessed_data", "data/interim/preprocessed")
+        # 定义输出文件目录
+        self.processed_data_dir = os.path.join(
+            self.project_root,
+            self.output_dirs.get("preprocessed_data", "data/interim/preprocessed"),
         )
-        self.plot_dir = (
-            self.project_root + "/" + self.output_dirs.get("plots", "plots") + "/preprocess"
-        )
+        # 移除绘图目录的定义
 
-        # 定义具体的输出文件名
-        self.converted_data_path = os.path.join(
-            self.processed_data_dir, "step_0_battery_aging_cycle_data_converted.csv"
+        # 定义具体的输出文件路径 (根据步骤命名，不依赖于具体的列名)
+        self.step0_converted_data_path = os.path.join(
+            self.processed_data_dir, "step0_battery_aging_cycle_data_converted.csv"
         )
-        self.cleaned_data_path = os.path.join(
-            self.processed_data_dir, "step_1_battery_aging_cycle_data_cleaned.csv"
+        # DataCleaner 会返回异常点数据
+        self.step1_cleaned_data_path = os.path.join(
+            self.processed_data_dir, "step1_battery_aging_cycle_data_cleaned.csv"
         )
-        self.anomalies_data_path = os.path.join(
-            self.processed_data_dir, "step_1_battery_aging_cycle_data_anomalies.csv"
+        self.step1_anomalies_data_path = os.path.join(
+            self.processed_data_dir, "step1_battery_aging_cycle_data_anomalies.csv"
         )
-        self.imputed_data_path = os.path.join(
-            self.processed_data_dir, "step_2_battery_aging_cycle_data_imputed.csv"
+        self.step2_imputed_data_path = os.path.join(
+            self.processed_data_dir, "step2_battery_aging_cycle_data_imputed.csv"
         )
-        self.denoised_data_path = os.path.join(
-            self.processed_data_dir, "step_3_battery_aging_cycle_data_denoised.csv"
+        self.step3_denoised_data_path = os.path.join(
+            self.processed_data_dir, "step3_battery_aging_cycle_data_denoised.csv"
         )
-        self.decomposed_data_path = os.path.join(
-            self.processed_data_dir, "step_4_battery_aging_cycle_data_decomposed.csv"
+        self.step4_standardized_data_path = os.path.join(
+            self.processed_data_dir, "step4_battery_aging_cycle_data_standardized.csv"
         )
+        # 移除 step5_decomposed_data_path
 
-        self.overall_before_cleaning_plot_path = os.path.join(
-            self.plot_dir, "overall_before_cleaning.png"
-        )
-        self.overall_after_cleaning_plot_path = os.path.join(
-            self.plot_dir, "overall_after_cleaning.png"
-        )
-        self.overall_after_imputation_plot_path = os.path.join(
-            self.plot_dir, "overall_after_imputation.png"
-        )
+        # 移除所有绘图输出文件名的基础路径定义
 
-        logger.info("PreprocessingPipeline 初始化完成.")
+        logger.info("PreprocessingPipeline 初始化完成 (无绘图功能).")
 
-    def run(self) -> pd.DataFrame | None:
+    def _create_required_dirs(self):
+        """
+        创建预处理流程所需的输出目录.
+        如果目录已存在，则不做任何操作.
+        """
+        logger.info("创建输出目录...")
+        try:
+            os.makedirs(self.processed_data_dir, exist_ok=True)
+            logger.info(f"创建数据输出目录: {self.processed_data_dir}")
+            # 移除创建绘图目录的代码
+        except OSError as e:
+            logger.error(f"创建输出目录失败: {e}", exc_info=True)
+            raise  # 重新抛出错误，因为无法保存结果是致命的
+
+    def _save_dataframe(self, df: pd.DataFrame, path: str, step_name: str):
+        """
+        保存 DataFrame 到指定路径，并记录日志.
+
+        Args:
+            df (pd.DataFrame): 要保存的 DataFrame.
+            path (str): 保存文件的完整路径.
+            step_name (str): 当前处理步骤的名称，用于日志记录.
+        """
+        if df is None or df.empty:
+            logger.warning(f"{step_name} 后 DataFrame 为空或 None, 跳过保存.")
+            return
+
+        try:
+            df.to_csv(path, index=False)
+            logger.info(f"{step_name} 后数据已保存至: {path}")
+        except Exception as e:
+            logger.error(f"保存 {step_name} 后数据失败至 {path}: {e}", exc_info=True)
+            # 保存失败不中断整个流程
+
+    def run(self) -> Tuple[pd.DataFrame | None, Dict[str, str], pd.DataFrame | None]:
         """
         执行完整的预处理流程.
 
         Returns:
-            pd.DataFrame | None: 最终处理完成的数据框，如果任何步骤失败则返回 None.
+            Tuple[pd.DataFrame | None, Dict[str, str], pd.DataFrame | None]:
+                - pd.DataFrame | None: 最终处理完成的数据框. 如果任何主要步骤失败，返回 None.
+                - Dict[str, str]: 记录每个处理步骤后目标列名的字典.
+                                  键为步骤名称 (例如, 'cleaning', 'imputation'), 值为处理后的目标列名.
+                - pd.DataFrame | None: 清洗步骤中检测到的异常点数据. 如果清洗失败或没有异常点，返回 None 或空 DataFrame.
         """
-        logger.info("数据预处理流程开始执行.")
+        logger.info("数据预处理流程开始执行 (无绘图功能).")
+
+        output_column_mapping: Dict[str, str] = {}
+        df_anomalies: pd.DataFrame | None = None  # 初始化异常点 DataFrame
+        current_df: pd.DataFrame | None = None  # 当前处理的 DataFrame
+        current_target_column: str = self.initial_target_column  # 当前处理的目标列名
 
         # --- 1. 创建输出目录 ---
         self._create_required_dirs()
 
         # --- 2. 数据加载和转换 ---
-        converted_df = self._load_and_transform_data()
+        logger.info("执行数据加载和转换...")
+        raw_data_path = os.path.join(
+            self.project_root, self.input_data_paths.get("raw_data_path", "")
+        )
+        if not raw_data_path:
+            logger.error("原始数据路径未配置或为空.")
+            raise ValueError("原始数据路径未配置或为空.")
+
+        # 直接调用 DataConverter 的 load_and_convert 方法
+        converted_df = self.converter.load_and_convert(raw_data_path)
         if converted_df is None or converted_df.empty:
-            logger.error("Pipeline: 数据加载或转换失败，流程终止.")
-            return None
+            logger.error("数据加载或转换失败或结果为空，流程终止.")
+            raise ValueError("数据加载或转换失败或结果为空.")
 
-        # --- 3. 数据清洗 (初步过滤 + 异常检测) ---
-        cleaned_result = self._clean_data(converted_df.copy())  # 传入副本进行清洗
-        if cleaned_result is None:
-            logger.error("Pipeline: 数据清洗失败，流程终止.")
-            return None
-        df_cleaned, df_anomalies = cleaned_result
+        current_df = converted_df.copy()  # 从转换后的数据开始处理
+        current_target_column = self.initial_target_column  # 设置初始目标列名
 
-        # 4. 缺失值处理
-        df_imputed = self._impute_missing_values(df_cleaned.copy())  # 传入清洗后的数据副本
-        if df_imputed is None:
-            logger.error("Pipeline: 缺失值处理失败，流程终止.")
-            return None
+        # 检查转换后的数据是否包含必要的列
+        required_initial_cols = ["battery_id", "cycle_idx", current_target_column]
+        if not all(col in current_df.columns for col in required_initial_cols):
+            missing_cols = [col for col in required_initial_cols if col not in current_df.columns]
+            logger.error(f"数据加载或转换后缺少必要列 {missing_cols}，流程终止.")
+            raise ValueError(f"数据加载或转换后缺少必要列 {missing_cols}.")
 
-        # 5. 数据去噪
-        df_denoised = self._denoise_data(df_imputed.copy())  # 传入插值后的数据副本
-        if df_denoised is None:
-            logger.error("Pipeline: 数据去噪失败，流程终止.")
-            return None
+        # 转换后的数据始终保存
+        self._save_dataframe(current_df, self.step0_converted_data_path, "转换")
 
-        # 6. 趋势分解
-        df_decomposed = self._decompose_data(df_denoised.copy())  # 传入去噪后的数据副本
-        if df_decomposed is None:
-            logger.error("Pipeline: 趋势分解失败，流程终止.")
-            return None
+        # 移除所有原始数据相关的绘图代码
 
-        logger.info("数据预处理流程执行完成。")
-        return df_decomposed  # 返回最终处理完成的数据框
-
-    def _create_required_dirs(self):
-        """
-        根据配置创建所有必要的输出目录.
-        """
-        for key, dir_path in self.output_dirs.items():
-            try:
-                abs_dir_path = os.path.join(self.project_root, dir_path)
-                os.makedirs(abs_dir_path, exist_ok=True)
-                logger.info(f"Pipeline: 已创建或确认输出目录 '{key}': {dir_path}")
-            except OSError as e:
-                logger.exception(f"Pipeline: 创建输出目录 '{dir_path}' 时发生错误: {e}")
-                raise
-
-    def _load_and_transform_data(self) -> pd.DataFrame | None:
-        """
-        执行数据加载和初步转换步骤
-
-        Returns:
-            pd.DataFrame | None: 加载并转换后的数据框，如果失败则返回 None
-        """
-        logger.info("Pipeline: 执行数据加载和转换...")
+        # --- 3. 清洗步骤 ---
+        logger.info(f"执行清洗步骤，目标列: '{current_target_column}'...")
+        # 清洗前保留当前列名，用于插值步骤的原始列对比 (虽然没有绘图，但保留这个信息流可能对其他用途有益)
+        col_before_cleaning = current_target_column
         try:
-            converted_df = self.preprocessor.load_data(
-                self.project_root + "/" + self.data_paths.get("raw_data_path"),
-            )
-            if converted_df.empty:
-                logger.error("Pipeline: 数据加载失败，返回空数据框.")
-                return None
-
-            converted_df.to_csv(self.converted_data_path, index=False)
-            logger.info(f"Pipeline: 清洗后的数据已保存至: {self.converted_data_path}")
-
-            # 绘制原始数据图
-            if self.data_paths.get("raw_data_path") and os.path.exists(
-                self.data_paths.get("raw_data_path")
-            ):
-                logger.info("Pipeline: 绘制原始数据单电池图...")
-                self.plotter.plot_per_battery_raw(converted_df, self.plot_dir)
-
-            logger.info("Pipeline: 数据加载和转换步骤完成.")
-            return converted_df
-
-        except Exception as e:
-            logger.error(f"Pipeline: 数据加载和转换步骤执行失败: {e}.")
-            return None
-
-    def _clean_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame] | None:
-        """
-        执行数据清洗 (初步过滤 + 异常检测) 步骤.
-
-        Args:
-            df (pd.DataFrame): 需要清洗的原始数据框.
-
-        Returns:
-            Tuple[pd.DataFrame, pd.DataFrame] | None: 清洗后的数据框和异常点数据框，如果失败则返回 None.
-        """
-        logger.info("Pipeline: 执行数据清洗流程...")
-        try:
-            df_cleaned, df_anomalies = self.preprocessor.clean_data(df)
-            logger.info(
-                f"Pipeline: 数据清洗完成. 清洗后数据形状: {
-                    df_cleaned.shape}, 检测到异常点数量: {
-                    len(df_anomalies)}."
+            # DataCleaner.clean_data 返回 (df_cleaned, df_anomalies, output_target_column)
+            cleaned_result_tuple = self.cleaner.clean_data(current_df, current_target_column)
+            current_df, df_anomalies, current_target_column = (
+                cleaned_result_tuple  # 清洗通常不改变列名
             )
 
-            # 保存清洗数据
-            df_cleaned.to_csv(self.cleaned_data_path, index=False)
-            logger.info(f"Pipeline: 清洗后的数据已保存至: {self.cleaned_data_path}")
-            if not df_anomalies.empty:
-                df_anomalies.to_csv(self.anomalies_data_path, index=False)
-                logger.info(f"Pipeline: 异常数据已保存至: {self.anomalies_data_path}")
-            else:
-                logger.info("Pipeline: 未检测到异常数据，未保存异常数据文件.")
+            if current_df is None or current_df.empty:
+                # 如果清洗后数据为空，则后续步骤无法进行
+                logger.error("预处理失败: 清洗步骤后数据为空.")
+                return None, output_column_mapping, df_anomalies
 
-            # 绘制清洗相关图
-            try:
-                logger.info("Pipeline: 绘制清洗相关图...")
-                # 为了绘制 comparison 图，需要带有 anomaly 标记的完整 DataFrame
-                # 在这里重新运行 anomaly detection 来获取 df_with_anomaly
-                df_with_anomaly_temp = (
-                    self.preprocessor.data_cleaner.detect_anomalies_with_isolation_forest(
-                        self.preprocessor.data_cleaner.perform_initial_cleaning(df.copy())
-                    )
-                )  # 传入原始数据的副本
-                self.plotter.plot_per_battery_comparison(
-                    df, df_with_anomaly_temp, self.plot_dir
-                )  # 传入原始数据和带标记数据
-                self.plotter.plot_per_battery_cleaned(df_cleaned, self.plot_dir)
-                self.plotter.plot_overall_sequence(
-                    df,  # 绘制清洗前使用原始数据
-                    "清洗前总体序列",
-                    self.overall_before_cleaning_plot_path,
-                    max_batteries=self.overall_plot_max_batteries,
-                )
-                self.plotter.plot_overall_sequence(
-                    df_cleaned,
-                    "清洗后总体序列",
-                    self.overall_after_cleaning_plot_path,
-                    max_batteries=self.overall_plot_max_batteries,
-                )
-            except Exception as e:
-                logger.error(f"Pipeline: 绘制清洗相关图时发生错误: {e}")
+            output_column_mapping["cleaning"] = current_target_column  # 记录清洗后的目标列名
 
-            return df_cleaned, df_anomalies
-        except Exception as e:
-            logger.error(f"Pipeline: 数据清洗流程执行失败: {e}.")
-            return None
+        except (ValueError, KeyError, RuntimeError, Exception) as e:
+            logger.error(f"执行清洗步骤时发生错误: {e}", exc_info=True)
+            # 清洗失败是关键错误，终止流程
+            return None, output_column_mapping, df_anomalies
 
-    def _impute_missing_values(self, df: pd.DataFrame) -> pd.DataFrame | None:
-        """
-        执行缺失值处理步骤.
+        logger.info(
+            f"清洗步骤完成. 当前处理列: '{current_target_column}'. 数据形状: {current_df.shape}."
+        )
 
-        Args:
-            df (pd.DataFrame): 需要处理缺失值的数据框 (通常是清洗后的数据).
+        # 保存清洗后的数据
+        self._save_dataframe(current_df, self.step1_cleaned_data_path, "清洗")
 
-        Returns:
-            pd.DataFrame | None: 处理缺失值后的数据框，如果失败则返回 None.
-        """
-        logger.info("Pipeline: 执行缺失值处理流程...")
+        # 保存异常点数据
+        if df_anomalies is not None and not df_anomalies.empty:
+            self._save_dataframe(df_anomalies, self.step1_anomalies_data_path, "异常点")
+
+        # --- 4. 插值步骤 ---
+        logger.info(f"执行插值步骤，目标列: '{current_target_column}'...")
+        # 插值前保留当前列名，用于去噪步骤的原始列对比
         try:
-            df_imputed = self.preprocessor.impute_missing_values(df)
-            logger.info(f"Pipeline: 缺失值处理完成. 处理后数据形状: {df_imputed.shape}.")
-            remaining_nan_after_imputation = (
-                df_imputed[self.preprocessor.data_imputer.target_column].isna().sum()
+            # DataImputer.impute_missing_values 返回 (imputed_df, output_column)
+            imputed_result_tuple = self.imputer.impute_missing_values(
+                current_df, current_target_column
             )
-            if remaining_nan_after_imputation > 0:
-                logger.warning(
-                    f"Pipeline: 缺失值处理后，目标列 '{self.preprocessor.data_imputer.target_column}' 仍有 {
-                               remaining_nan_after_imputation} 个缺失值."
-                )
+            current_df, current_target_column = imputed_result_tuple  # 插值通常不改变列名
 
-            # 保存插值数据
-            df_imputed.to_csv(self.imputed_data_path, index=False)
-            logger.info(f"Pipeline: 插值后的数据已保存至: {self.imputed_data_path}")
+            if current_df is None or current_df.empty:
+                logger.error("预处理失败: 插值步骤后数据为空.")
+                return None, output_column_mapping, df_anomalies
 
-            # 绘制缺失值处理相关图
-            try:
-                logger.info("Pipeline: 绘制缺失值处理相关图...")
-                # plot_per_battery_imputed 需要清洗前的数据来区分原始点和插值点
-                # 这里传入清洗后的数据 df (作为原始点参考) 和插值后的数据 df_imputed
-                self.plotter.plot_per_battery_imputed(df, df_imputed, self.plot_dir)
-                self.plotter.plot_overall_sequence(
-                    df_imputed,
-                    "插值后总体序列",
-                    self.overall_after_imputation_plot_path,
-                    max_batteries=self.overall_plot_max_batteries,
-                )
-            except Exception as e:
-                logger.error(f"Pipeline: 绘制缺失值处理相关图时发生错误: {e}")
+            output_column_mapping["imputation"] = current_target_column  # 记录插值后的目标列名
 
-            return df_imputed
-        except Exception as e:
-            logger.error(f"Pipeline: 缺失值处理流程执行失败: {e}.")
-            return None
+        except (ValueError, KeyError, RuntimeError, Exception) as e:
+            logger.error(f"执行插值步骤时发生错误: {e}", exc_info=True)
+            return None, output_column_mapping, df_anomalies
 
-    def _denoise_data(self, df: pd.DataFrame) -> pd.DataFrame | None:
-        """
-        执行数据去噪步骤.
+        logger.info(
+            f"插值步骤完成. 当前处理列: '{current_target_column}'. 数据形状: {current_df.shape}."
+        )
 
-        Args:
-            df (pd.DataFrame): 需要去噪的数据框 (通常是插值后的数据).
+        # 保存插值后的数据
+        self._save_dataframe(current_df, self.step2_imputed_data_path, "插值")
 
-        Returns:
-            pd.DataFrame | None: 去噪后的数据框，如果失败则返回 None.
-        """
-        logger.info("Pipeline: 执行数据去噪流程...")
+        # 移除所有插值后相关的绘图代码
+
+        # --- 5. 去噪步骤 ---
+        logger.info(f"执行去噪步骤，目标列: '{current_target_column}'...")
+        # 去噪前保留当前列名，用于标准化步骤的原始列对比
         try:
-            # 确保去噪的目标列存在于 df 中
-            target_col_for_denoising = self.preprocessor.data_denoiser.target_column
-            if target_col_for_denoising not in df.columns:
-                logger.error(
-                    f"Pipeline: 数据去噪失败: 数据中缺少目标列 '{target_col_for_denoising}'."
-                )
-                return None
+            # DataDenoiser.denoise_data 返回 (denoised_df, output_column)
+            denoised_result_tuple = self.denoiser.denoise_data(current_df, current_target_column)
+            current_df, current_target_column = denoised_result_tuple  # 去噪通常不改变列名
 
-            df_denoised = self.preprocessor.denoise_data(df)
-            logger.info(f"Pipeline: 数据去噪完成. 去噪后数据形状: {df_denoised.shape}.")
-            denoised_col_name = self.preprocessor.data_denoiser.denoised_column_name
-            if denoised_col_name not in df_denoised.columns:
-                logger.warning(
-                    f"Pipeline: 数据去噪流程完成，但去噪列 '{denoised_col_name}' 未生成."
-                )
-            else:
-                remaining_nan_after_denoising = df_denoised[denoised_col_name].isna().sum()
-                if remaining_nan_after_denoising > 0:
-                    logger.warning(
-                        f"Pipeline: 数据去噪后，去噪列 '{denoised_col_name}' 仍有 {
-                                   remaining_nan_after_denoising} 个缺失值."
-                    )
+            if current_df is None or current_df.empty:
+                logger.error("预处理失败: 去噪步骤后数据为空.")
+                return None, output_column_mapping, df_anomalies
 
-            # 保存去噪数据
-            df_denoised.to_csv(self.denoised_data_path, index=False)
-            logger.info(f"Pipeline: 去噪后的数据已保存至: {self.denoised_data_path}")
+            output_column_mapping["denoising"] = current_target_column  # 记录去噪后的目标列名
 
-            # 绘制去噪相关图
-            try:
-                logger.info("Pipeline: 绘制去噪相关图...")
-                # 绘制原始插值数据与去噪后数据的对比
-                self.plotter.plot_per_battery_denoised(
-                    df_denoised,  # 传入去噪后的数据，其中包含原始列和去噪列
-                    self.plot_dir,
-                    original_column=target_col_for_denoising,  # 使用去噪的目标列作为原始列
-                    denoised_column=denoised_col_name,
-                )
-            except Exception as e:
-                logger.error(f"Pipeline: 绘制去噪相关图时发生错误: {e}")
+        except (ValueError, KeyError, RuntimeError, Exception) as e:
+            logger.error(f"执行去噪步骤时发生错误: {e}", exc_info=True)
+            return None, output_column_mapping, df_anomalies
 
-            return df_denoised
-        except Exception as e:
-            logger.error(f"Pipeline: 数据去噪流程执行失败: {e}.")
-            return None
+        logger.info(
+            f"去噪步骤完成. 当前处理列: '{current_target_column}'. 数据形状: {current_df.shape}."
+        )
 
-    def _decompose_data(self, df: pd.DataFrame) -> pd.DataFrame | None:
-        """
-        执行趋势分解步骤.
+        # 保存去噪后的数据
+        self._save_dataframe(current_df, self.step3_denoised_data_path, "去噪")
 
-        Args:
-            df (pd.DataFrame): 需要进行趋势分解的数据框 (通常是去噪后的数据).
+        # 移除所有去噪后相关的绘图代码
 
-        Returns:
-            pd.DataFrame | None: 趋势分解后的数据框，如果失败则返回 None.
-        """
-        logger.info("Pipeline: 开始趋势分解流程...")
+        # --- 6. 标准化步骤 ---
+        # 注意：这里是 Step 6，对应 step4_standardized_data_path
+        logger.info(f"执行标准化步骤，目标列: '{current_target_column}'...")
+        # 标准化前保留当前列名 (可选，如果需要标准化前后的对比图)
+        col_before_standardization = current_target_column
         try:
-            # 确保分解的目标列存在于 df 中
-            target_col_for_decomposition = self.preprocessor.data_decomposer.target_column
-            if target_col_for_decomposition not in df.columns:
-                logger.error(
-                    f"Pipeline: 趋势分解失败: 数据中缺少目标列 '{
-                             target_col_for_decomposition}'."
-                )
-                return None
+            # DataStandardizer.standardize_data 返回 (standardized_df, output_column)
+            standardized_result_tuple = self.standardizer.standardize_data(
+                current_df, current_target_column
+            )
+            current_df, current_target_column = standardized_result_tuple  # 标准化通常不改变列名
 
-            df_decomposed = self.preprocessor.decompose_data(df)
-            logger.info(f"Pipeline: 趋势分解完成. 分解后数据形状: {df_decomposed.shape}.")
+            if current_df is None or current_df.empty:
+                logger.error("预处理失败: 标准化步骤后数据为空.")
+                return None, output_column_mapping, df_anomalies
 
-            trend_col_name = self.preprocessor.data_decomposer.trend_column_name
-            residual_col_name = self.preprocessor.data_decomposer.residual_column_name
-            mode_prefix = self.preprocessor.data_decomposer.mode_column_prefix
+            output_column_mapping["standardization"] = (
+                current_target_column  # 记录标准化后的目标列名
+            )
 
-            if trend_col_name not in df_decomposed.columns:
-                logger.warning(f"Pipeline: 趋势分解流程完成，但趋势列 '{trend_col_name}' 未生成.")
-            else:
-                remaining_nan_trend = df_decomposed[trend_col_name].isna().sum()
-                if remaining_nan_trend > 0:
-                    logger.warning(
-                        f"Pipeline: 趋势分解后，趋势列 '{trend_col_name}' 仍有 {
-                                   remaining_nan_trend} 个缺失值."
-                    )
+        except (ValueError, KeyError, RuntimeError, Exception) as e:
+            logger.error(f"执行标准化步骤时发生错误: {e}", exc_info=True)
+            return None, output_column_mapping, df_anomalies
 
-            if residual_col_name not in df_decomposed.columns:
-                logger.warning(
-                    f"Pipeline: 趋势分解流程完成，但残差列 '{residual_col_name}' 未生成."
-                )
-            else:
-                remaining_nan_residual = df_decomposed[residual_col_name].isna().sum()
-                if remaining_nan_residual > 0:
-                    logger.warning(
-                        f"Pipeline: 趋势分解后，残差列 '{residual_col_name}' 仍有 {
-                                   remaining_nan_residual} 个缺失值."
-                    )
+        logger.info(
+            f"标准化步骤完成. 当前处理列: '{current_target_column}'. 数据形状: {current_df.shape}."
+        )
 
-            mode_cols_check = [col for col in df_decomposed.columns if col.startswith(mode_prefix)]
-            logger.info(f"Pipeline: 分解出的模态数量: {len(mode_cols_check)}")
+        # 保存标准化后的数据
+        self._save_dataframe(current_df, self.step4_standardized_data_path, "标准化")
 
-            # 保存分解数据
-            df_decomposed.to_csv(self.decomposed_data_path, index=False)
-            logger.info(f"Pipeline: 趋势分解后的数据已保存至: {self.decomposed_data_path}")
+        logger.info("数据预处理流程所有步骤执行完成.")
 
-            # 绘制趋势分解相关图
-            try:
-                logger.info("Pipeline: 绘制趋势分解相关图...")
-                self.plotter.plot_per_battery_decomposed(
-                    df_decomposed,
-                    self.plot_dir,
-                    target_column=target_col_for_decomposition,
-                    show_modes=True,  # 根据需要控制是否绘制模态
-                )
-            except Exception as e:
-                logger.error(f"Pipeline: 绘制趋势分解相关图时发生错误: {e}")
-
-            return df_decomposed
-        except Exception as e:
-            logger.error(f"Pipeline: 趋势分解流程执行失败: {e}.")
-            return None
+        # 返回最终处理后的 DataFrame, 列名映射和异常点 DataFrame
+        return current_df, output_column_mapping, df_anomalies

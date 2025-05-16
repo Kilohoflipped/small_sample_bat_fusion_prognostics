@@ -1,24 +1,86 @@
 # 绘图风格配置 (StyleSetter)
 plot_style:
-  title_fontsize: 24 # 标题字体大小
-  label_fontsize: 22 # 标签字体大小
-  tick_fontsize: 20 # 刻度字体大小
-  legend_fontsize: 20 # 图例字体大小
-  line_color_primary: '#1f77b4' # 主线条颜色 (蓝色)
-  line_color_secondary: '#ff7f0e' # 次要线条颜色 (橙色)
-  anomaly_color: '#d62728' # 异常点颜色 (红色)
-  interpolated_color: '#2ca02c' # 插值点颜色 (绿色)
-  background_line_color: '#cccccc' # 背景线颜色 (灰色)
-  grid_color: '#e0e0e0' # 网格颜色
-  spine_color: 'black' # 边框颜色
-  font_family: 'SimSun' # 字体家族 (确保系统支持)
-  axes_unicode_minus: False # 支持 Unicode 负号
-  legend_frameon: False # 图例无边框
-  legend_loc: 'best' # 默认图例位置
-  figure_facecolor: 'white' # 图形背景颜色
-  axes_facecolor: 'white' # 坐标轴背景颜色
-  grid_visible: True # 是否显示网格
-  grid_alpha: 0.6 # 网格透明度
-  line_linewidth: 2.0 # 默认线条宽度
-  scatter_markersize: 60 # 默认散点大小
+
+  interpolated_color: '#725c8a' # 插值点颜色
+  interpolated_mark_type:  "o" # 插值点样式
+  interpolated_markersize: 90 # 插值散点大小
+
+  anomaly_color: '#e76e51' # 异常点颜色
   anomaly_markersize: 120 # 异常点散点大小
+
+  rcParams:
+    # 字体相关
+    font:
+      family: ['Times New Roman','SimSun']
+
+    # Axes (坐标轴) 相关
+    axes:
+      unicode_minus: False # 支持 Unicode 负号
+      titlesize: 22 # 标题字体大小
+      labelsize: 20 # 标签字体大小
+
+      prop_cycle: | # 设置颜色循环
+        cycler(color=['#2a9d90','#ea3932', '#f3a260', '#72bdd7', '#725c8a'])
+      facecolor: white # 坐标轴背景颜色
+      edgecolor: black # 轴边框颜色
+      linewidth: 1 # 轴边框宽度
+
+      spines: # 轴边框可见性
+        right: True # 右边有边框
+        left: True # 左边有边框
+        bottom: True # 下边有边框
+        top: True # 上边有边框
+
+      grid: False # 网格可见性
+
+    # Grid (网格线本身) 的属性
+    grid:
+      color: "#e0e0e0" # 网格颜色
+      alpha: 0.5 # 网格透明度
+      linewidth: 0.7 # 网格线宽
+      linestyle: '-' # 网格线样式
+
+    # 刻度 (Ticks) 相关
+    xtick:
+      labelsize: 18
+      direction : in # 刻度向内
+      top : False # 不在顶部显示刻度
+      bottom: True # 显示底部主刻度
+      labelbottom: True # 显示底部刻度标签
+    ytick:
+      labelsize: 18
+      direction : in # 刻度向内
+      left: True # 显示左侧主刻度
+      right: False # 不在右侧显示刻度
+      labelleft: True # 显示左侧刻度标签
+
+    # 图例 (Legend) 相关
+    legend:
+      loc: best # 默认图例位置
+      fontsize: 18  # 图例字体大小
+      frameon: False # 图例无边框
+      fancybox: False # 图例边框是否圆角
+      shadow: False # 图例是否有阴影
+
+
+    # Figure (图窗) 相关
+    figure:
+      facecolor: white # 图形背景颜色
+      # 16cm, 9cm / 2.54 变成英寸
+      figsize : [6.2992, 3.5433]
+      dpi : 300 # 创建图窗时的默认 DPI
+
+    savefig:
+      dpi: 300 # 保存图窗时的默认 DPI
+      format : 'png' # 默认以svg存储
+      bbox : 'tight' # 控制保存图片时是否包含图窗周围的空白区域
+      transparent : 'False' # 默认不透明
+
+    # 线条 (Lines) 相关
+    lines:
+      linewidth: 2
+      linestyle : '-' # 默认实线
+      color: '#2a9d90' # 默认线条颜色
+      marker : None # 默认不带标记
+      markersize: 6.0 # 默认标记大小
+      markeredgewidth: 1.0 # 标记边缘线宽

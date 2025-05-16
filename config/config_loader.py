@@ -1,15 +1,17 @@
-import os
-import yaml
-import logging
-from typing import Dict, Any, Optional, List
-import sys
 import copy
+import logging
+import os
+import sys
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
 
-def find_project_root(start_path: Optional[str] = None,
-                      marker_file: str = "pyproject.toml") -> str:
+def find_project_root_dir(
+    start_path: Optional[str] = None, marker_file: str = "pyproject.toml"
+) -> str:
     """
     从给定的路径或当前执行脚本的目录向上查找项目根目录
     通过查找特定的标记文件实现
@@ -55,6 +57,34 @@ def find_project_root(start_path: Optional[str] = None,
     )
 
 
+def find_config_dir(project_root_dir: str, config_dir_relative_path: str = "config") -> str:
+    """
+    根据项目根目录寻找配置路径
+
+    Args:
+        project_root_dir: 项目根目录
+        config_dir_relative_path: 配置文件目录相对于项目根目录的路径
+                                  默认为 "config".
+
+    Returns:
+        配置文件目录的最对路径
+
+    Raises:
+        IOError: 如果配置文件目录不存在或不为目录
+    """
+
+    config_dir = os.path.join(project_root_dir, config_dir_relative_path)
+
+    if not os.path.isdir(config_dir):
+        msg = f"配置文件目录不存在或不为目录: {config_dir}.请检查项目结构."
+        logger.error(msg)
+        raise IOError(msg)
+
+    logger.info(f"找到配置文件目录: {config_dir}")
+
+    return config_dir
+
+
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
     """
     加载 YAML 配置文件.
@@ -73,7 +103,7 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"配置文件不存在: {config_path}")
     try:
-        with open(config_path, 'r', encoding='utf-8') as file:
+        with open(config_path, "r", encoding="utf-8") as file:
             config = yaml.safe_load(file)
         logger.info(f"成功加载配置文件: {config_path}")
         return config
@@ -83,6 +113,40 @@ def load_yaml_config(config_path: str) -> Dict[str, Any]:
     except IOError as e:
         logger.exception(f"读取配置文件 '{config_path}' 时发生 IO 错误: {e}")
         raise
+
+
+def collect_yaml_files_from_dir(
+    directory_path: str,
+    all_yaml_files_list: List[str],
+) -> List[str]:
+    """
+    检查给定的路径是否是目录, 如果是, 收集其中所有 .yaml 文件的路径并添加到列表中
+    处理目录读取错误 (如权限问题) 为致命错误
+
+    Args:
+        directory_path (str): 需要检查和收集文件的目录路径
+        all_yaml_files_list (List[str]): 收集到的 YAML 文件路径将添加到此列表中
+    """
+    all_yaml_files_list_collected = all_yaml_files_list
+
+    if os.path.exists(directory_path) and os.path.isdir(directory_path):
+        logger.info(f"收集配置目录文件: {directory_path}")
+        try:
+            filenames = os.listdir(directory_path)
+            for filename in filenames:
+                if filename.endswith(".yaml"):
+                    file_path = os.path.join(directory_path, filename)
+                    all_yaml_files_list_collected.append(file_path)
+                    logger.debug(f"已收集文件: {file_path}")
+        except IOError as e:
+            # 捕获读取目录列表时的错误 (如权限)
+            logger.exception(f"错误: 读取配置目录 '{directory_path}' 时发生IO错误 {e}.")
+            raise
+    else:
+        # 如果目录不存在或不是目录, 记录信息
+        logger.info(f"配置目录不存在或不是目录: {directory_path}. 未收集该目录下的文件.")
+
+    return all_yaml_files_list_collected
 
 
 def recursive_merge_configs(base: Dict[str, Any], head: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,36 +174,21 @@ def recursive_merge_configs(base: Dict[str, Any], head: Dict[str, Any]) -> Dict[
     return merged
 
 
-def collect_yaml_files_from_dir(directory_path: str,
-                                all_yaml_files_list: List[str],
-                                ) -> List[str]:
+def load_and_merge_configs(config_file_paths: List[str]) -> Dict[str, Any]:
     """
-    检查给定的路径是否是目录, 如果是, 收集其中所有 .yaml 文件的路径并添加到列表中
-    处理目录读取错误 (如权限问题) 为致命错误
+    从一个 Yaml 文件路径列表中加载并递归地合并配置
 
     Args:
-        directory_path (str): 需要检查和收集文件的目录路径
-        all_yaml_files_list (List[str]): 收集到的 YAML 文件路径将添加到此列表中
+        config_file_paths: 一个要加载的 Yaml 文件绝对路径列表
+
+    Returns:
+        一个递归合并了所有配置的列表
+
     """
-    all_yaml_files_list_collected = all_yaml_files_list
+    config: Dict[str, Any] = {}
 
-    if os.path.exists(directory_path) and os.path.isdir(directory_path):
-        logger.info(f"收集配置目录文件: {directory_path}")
-        try:
-            filenames = os.listdir(directory_path)
-            for filename in filenames:
-                if filename.endswith('.yaml'):
-                    file_path = os.path.join(directory_path, filename)
-                    all_yaml_files_list_collected.append(file_path)
-                    logger.debug(f"已收集文件: {file_path}")
-        except IOError as e:
-            # 捕获读取目录列表时的错误 (如权限)
-            logger.exception(f"错误: 读取配置目录 '{directory_path}' 时发生IO错误.")
-            raise
-    else:
-        # 如果目录不存在或不是目录, 记录信息
-        logger.info(
-            f"配置目录不存在或不是目录: {directory_path}. 未收集该目录下的文件."
-        )
+    for file_path in config_file_paths:
+        sub_config = load_yaml_config(file_path)
+        config = recursive_merge_configs(config, sub_config)
 
-    return all_yaml_files_list_collected
+    return config

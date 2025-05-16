@@ -1,9 +1,15 @@
 # 数据清洗配置 (DataCleaner)
 data_cleaner:
   # 初步清洗参数
-  initial_target_threshold: 22 # target 列的最低阈值
-  initial_cycle_idx_threshold: 0 # cycle_idx 列的最低阈值
+  initial_cleaning_config:
+    target_threshold: 22 # target 列的最低阈值, 小于等于此值的行将被移除
+    cycle_idx_threshold: 0 # cycle_idx 列的最低阈值, 小于等于此值的行将被移除
+
   # 孤立森林算法的参数
-  features_for_isolation_forest: ["target", "cycle_idx"] # 用于孤立森林的特征
-  contamination: 0.03 # 孤立森林污染参数
-  random_state: 42
+  isolation_forest_config:
+    # IsolationForest 模型的污染率参数, 表示数据中异常点的比例估计. 必须在 (0, 0.5] 范围内
+    contamination: 0.02
+    # IsolationForest 模型的随机状态, 用于保证结果的可复现性
+    random_state: 137
+    # 用于标记异常值的输出列名称
+    anomaly_column_name: "anomaly"

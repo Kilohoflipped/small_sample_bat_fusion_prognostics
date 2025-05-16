@@ -5,15 +5,15 @@ from typing import Any, Dict, List
 
 from config.config_loader import (
     collect_yaml_files_from_dir,
-    find_project_root,
+    find_project_root_dir,
     load_yaml_config,
     recursive_merge_configs,
-    )
+)
 from config.config_setter import setup_logging
-from src.pipeline.preprocess_pipeline import PreprocessingPipeline
+from src.modules.visualization.plotter.preprocess_paper import PreprocessPaperPlotter
+from src.modules.visualization.style_setter import StyleSetter
 
 logger = logging.getLogger(__name__)
-
 
 if __name__ == "__main__":
     # --- 步骤 1: 配置日志, 收集配置文件路径 ---
@@ -28,14 +28,12 @@ if __name__ == "__main__":
     LOG_CONFIG_PATH = "logging.yaml"
     # 定义文件路径配置文件名
     DATA_IO_PATH_CONFIG_PATH = "data_io_paths.yaml"
-    # 定义数据预处理配置目录名
-    DATA_PREPROCESS_CONFIG_DIRNAME = "data_preprocess"
     # 定义绘图配置目录名
     PLOT_CONFIG_DIRNAME = "plot"
 
     try:
         # 从当前脚本执行的目录开始向上查找项目根目录
-        project_root = find_project_root(marker_file=PROJECT_ROOT_MARKER)
+        project_root = find_project_root_dir(marker_file=PROJECT_ROOT_MARKER)
         logger.info(f"检测到的项目根目录: {project_root}")
 
         # 构建总配置目录的绝对路径
@@ -48,11 +46,10 @@ if __name__ == "__main__":
         # 构建重要配置路径
         log_config_path = os.path.join(config_dir, LOG_CONFIG_PATH)
         data_io_path_config_path = os.path.join(config_dir, DATA_IO_PATH_CONFIG_PATH)
-        data_preprocess_config_dir = os.path.join(config_dir, DATA_PREPROCESS_CONFIG_DIRNAME)
         plot_config_dir = os.path.join(config_dir, PLOT_CONFIG_DIRNAME)
 
     except FileNotFoundError as e:
-        # 如果 find_project_root 没有找到标记文件
+        # 如果 find_project_root_dir 没有找到标记文件
         logger.error(f"查找项目根目录失败: {e}")
         sys.exit(1)
     except Exception as e:
@@ -68,9 +65,6 @@ if __name__ == "__main__":
     logger.info(f"收集关键文件: {data_io_path_config_path}")
     all_config_files.append(data_io_path_config_path)
 
-    # 收集数据预处理配置目录下的文件 (如果目录存在且是目录)
-    logger.info(f"收集数据预处理配置目录文件: {data_preprocess_config_dir}")
-    all_config_files = collect_yaml_files_from_dir(data_preprocess_config_dir, all_config_files)
     # 收集绘图配置目录下的文件 (如果目录存在且是目录)
     logger.info(f"收集绘图配置目录文件: {plot_config_dir}")
     all_config_files = collect_yaml_files_from_dir(plot_config_dir, all_config_files)
@@ -105,15 +99,33 @@ if __name__ == "__main__":
 
     logger.info("所有配置文件加载并合并完成. 最终配置已准备好.")
 
-    # 实例化并运行 Pipeline
-    try:
-        pipeline = PreprocessingPipeline(config, project_root)
-        pipeline.run()
-    except Exception as e:
-        # 捕获 Pipeline 运行过程中的任何未处理异常
-        logger.exception(
-            f"数据预处理流程执行过程中发生未处理错误: {e}"
-        )  # 使用 exception 记录详细 traceback
-        sys.exit(1)  # 流程执行失败，退出程序
+    # 使用自定义风格
+    style_setter = StyleSetter(config=config.get("plot_style"))
 
-    logger.info("数据预处理流程执行完毕.")
+    # 2. 读取csv目录
+    csv_path = os.path.join(
+        project_root,
+        config.get("output_dirs", {}).get("preprocessed_data"),
+        "step_1_battery_aging_cycle_data_cleaned.csv",
+    )
+
+    # 3. 指定输出目录
+    plot_output_dir = os.path.join(
+        project_root,
+        config.get("output_dirs", {}).get("plots"),
+        "preprocess_paper",
+    )
+
+    # 4. 创建 PreprocessPaperPlotter 实例
+    try:
+        paper_plotter = PreprocessPaperPlotter(
+            style_setter=style_setter, csv_path=csv_path, output_dir=plot_output_dir
+        )
+
+        # 5. 指定噪声展示的 cycle_idx 范围，并调用绘图方法
+        noise_cycle_range = (110, 125)
+        inset_location = "lower center"
+        paper_plotter.plot_per_battery_paper_style(noise_cycle_range, inset_location)
+
+    except (FileNotFoundError, ValueError, Exception) as e:
+        logger.error(f"绘图过程中发生错误: {e}")

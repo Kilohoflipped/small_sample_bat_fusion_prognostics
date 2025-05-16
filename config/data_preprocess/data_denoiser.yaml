@@ -1,6 +1,4 @@
 # 数据去噪配置 (DataDenoiser)
 data_denoiser:
-  target_column: "target" # 需要去噪的目标列 (通常是插值后的 target)
-  denoised_column_name: "target_denoised" # 去噪后新列的名称
   wavelet: "db4" # 小波类型
   threshold_mode: "soft" # 阈值处理方式 (soft 或 hard)
