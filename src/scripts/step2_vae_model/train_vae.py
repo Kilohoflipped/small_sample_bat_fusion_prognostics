@@ -12,9 +12,10 @@ from config.config_loader import (
     find_config_dir,
     find_project_root_dir,
     load_and_merge_configs,
-    )
+)
 from config.config_setter import setup_logging
-from src.models import data_loader, vae_model
+from src.models.vae import data_loader
+from src.models.vae.vae import ConditionalVAE
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ def main():
 
     # --- 模型初始化 ---
     logger.info("初始化 VAE 模型.")
-    vae: vae_model.ConditionalVAE = vae_model.ConditionalVAE(
+    vae: ConditionalVAE = ConditionalVAE(
         input_dim, hidden_dim, latent_dim, condition_dim, output_dim
     ).to(device_using)
     logger.info("VAE 模型初始化完成.")
@@ -127,9 +128,9 @@ def main():
             logger.error("模型文件不存在: %s", e)
             logger.warning("模型加载失败, 将从头开始训练.")
             # 如果加载失败, 重新初始化模型以确保是随机权重 (虽然已经初始化过一次)
-            vae = vae_model.ConditionalVAE(
-                input_dim, hidden_dim, latent_dim, condition_dim, output_dim
-            ).to(device_using)
+            vae = ConditionalVAE(input_dim, hidden_dim, latent_dim, condition_dim, output_dim).to(
+                device_using
+            )
 
         except Exception as e:
             logger.error("加载模型参数时发生错误: %s", e)
@@ -141,7 +142,7 @@ def main():
 
     # --- 模型训练 ---
     logger.info("开始训练 VAE 模型.")
-    vae_model.train_vae(vae, dataloader, num_epochs, device_using, enable_teacher_forcing=True)
+    vae.train_vae(vae, dataloader, num_epochs, device_using, enable_teacher_forcing=True)
     logger.info("VAE 模型训练完成.")
 
     # --- 模型保存 ---

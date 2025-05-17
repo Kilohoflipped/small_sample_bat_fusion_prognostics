@@ -1,6 +1,6 @@
 """
 使用训练好的条件变分自编码器 (Conditional VAE) 进行推理生成的模块.
-根据 train_vae.py 和 vae_model.py 的内容进行修改, 以统一配置加载和模型处理逻辑.
+根据 train_vae.py 和 vae.py 的内容进行修改, 以统一配置加载和模型处理逻辑.
 """
 
 import logging
@@ -18,7 +18,8 @@ from config.config_loader import (
     load_and_merge_configs,
     )
 from config.config_setter import setup_logging
-from src.models import data_loader, vae_model
+from src.models.vae import data_loader
+from src.models.vae.vae import ConditionalVAE
 from src.modules.visualization.plotter.vae import StyleSetter, VAEPlotter
 
 # 获取 logger 实例
@@ -155,7 +156,7 @@ def main() -> None:
 
     # --- 模型初始化 ---
     logger.info("初始化 VAE 模型用于推理.")
-    vae: vae_model.ConditionalVAE = vae_model.ConditionalVAE(
+    vae: ConditionalVAE = ConditionalVAE(
         input_dim, hidden_dim, latent_dim, condition_dim, output_dim
     ).to(device_using)
     logger.info("VAE 模型初始化完成.")
